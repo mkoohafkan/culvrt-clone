@@ -1,0 +1,65 @@
+---
+title: "Method Comparison"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{method-comparison}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+This report compares the current RRDS flow calculations to flows
+calculated from the culvert head loss equations provided by the
+`culvrt` package.
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(tidyverse)
+library(lubridate)
+```
+
+```{r}
+diameter = 5
+comparison = expand_grid(head.loss = seq(0.5, 9, by = 0.1),
+  height = seq(0.1, 5, by = 0.01)) %>%
+  mutate(
+    eq1996 = map2_dbl(head.loss, height,
+      ~ uniroot(root_velocity_hist, c(0.1, 50), head.loss = .x, h = .y,
+        d = diameter, n = 0.026, ks.table = brater_ks())$root),
+    eq2011 = map2_dbl(head.loss, height,
+      ~ uniroot(root_velocity, c(0.1, 50), head.loss = .x, h = .y,
+        d = diameter, n = 0.022, ks.table = usda_ks())$root),
+    eq2021 = map2_dbl(head.loss, height,
+      ~ uniroot(root_velocity_alt, c(0.1, 50), head.loss = .x, h = .y,
+        d = diameter, n = 0.022, ks.table = usda_ks())$root)
+  ) %>%
+  pivot_longer(starts_with("eq"), names_to = "method",
+    values_to = "velocity") %>%
+  mutate(
+    method = factor(paste(str_extract(method, "[0-9]{4}"),
+      "equation")),
+    flow = velocity * culvert_area(diameter)
+  )
+
+ggplot(comparison) +
+  aes(x = head.loss, fill = flow, y = height) +
+  geom_raster() +
+  scale_fill_viridis_b("Culvert flow (cfs)",
+    breaks = seq(0, 300, by = 50), option = "B") +
+  facet_wrap(~ method, ncol = 2) +
+  scale_x_continuous("\nCulvert head loss (ft)",
+    expand = expansion()) +
+  scale_y_continuous("Slide gate height (ft)\n",
+    expand = expansion()) +
+  theme_bw() +
+  theme(
+    legend.position = c(0.75, 0.25),
+    axis.ticks = element_blank(),
+    legend.background = element_rect(color = "black")
+  )
+```

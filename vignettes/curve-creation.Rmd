@@ -1,0 +1,161 @@
+---
+title: "Decision Support Curves"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{decision-support-curves}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+This report uses the culvert head loss equations provided by the
+`culvrt` package to calculate the maximum allowable slide gate
+opening for the RRDS intakes.
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(tidyverse)
+library(lubridate)
+```
+
+```{r}
+culvert.values = expand_grid(
+  MSL = seq(-1, 8, by = 0.1),
+  ROR = seq(-1, 5, by = 1),
+  screen.velocity = c(0.2, 0.7),
+  height = seq(0.1, 5, by = 0.025),
+  num.culverts = c(4L, 6L, 8L)
+) %>%
+  mutate(
+    head = MSL - ROR,
+    max.flow = screen.velocity * 120 * (MSL + 7.2)
+  ) %>%
+  filter(head > 0) %>%
+  mutate(
+    culvert.velocity = map2_dbl(head, height,
+        ~ uniroot(root_velocity, c(0.1, 50), head.loss = .x, h = .y)$root),
+    flow = num.culverts * velocity_to_flow(culvert.velocity, 5)
+  ) %>%
+  arrange(desc(num.culverts), screen.velocity, MSL, ROR, desc(height))
+  
+culvert.curves = culvert.values %>%
+  filter(flow <= max.flow) %>%
+  group_by(num.culverts, screen.velocity, MSL, ROR) %>%
+  slice(1) %>%
+  ungroup()
+```
+
+
+```{r}
+#save(culvert.curves, file = "curve-creation.RData")
+```
+
+```{r}
+plot.template = list(
+  aes(x = MSL, y = height, color = flow, group = factor(ROR)),
+  geom_line(size = 1),
+  facet_wrap(~ paste(num.culverts, "culverts, approach velocity =", screen.velocity, "fps")),
+  scale_color_viridis_c("RRDS inflow (cfs)", option = "B"),
+  scale_x_continuous("Montezuma Slough stage (ft NAVD88)", breaks = seq(-1, 8, by = 1)),
+  scale_y_continuous("Slide gate opening (ft)", breaks = seq(0, 5, by = 0.5)),
+  theme_bw(),
+  theme(
+    legend.position = "top",
+    legend.background = element_rect(color = "black"),
+    legend.key.width = unit(1.75,"cm")
+  )
+)
+
+# 0.2 fps, 8 culverts
+culvert.curves %>%
+  filter(num.culverts == 8L, near(screen.velocity, 0.2)) %>%
+  ggplot() +
+    plot.template +
+    annotate("text",
+      x = c(-0.6, 0.4, 1.5, 2.5, 3.6, 4.6, 5.7),
+      y = 3.75,
+      label = paste("Hammond Pond Stage =",
+        seq(-1, 5), "ft NAVD88"),
+      angle = 270,
+      size = 3
+    )
+
+# 0.7 fps, 8 culverts
+culvert.curves %>%
+  filter(num.culverts == 8L, near(screen.velocity, 0.7)) %>%
+  ggplot() +
+    plot.template +
+    annotate("text",
+      x = c(-0.25, 1, 2.25, 3.5, 5.0, 6.5, 8),
+      y = 4.15,
+      label = paste("Hammond Pond Stage =",
+        seq(-1, 5), "ft NAVD88"),
+      angle = 270,
+      size = 3
+    ) 
+
+# 0.2 fps, 6 culverts
+culvert.curves %>%
+  filter(num.culverts == 6L, near(screen.velocity, 0.2)) %>%
+  ggplot() +
+    plot.template +
+    annotate("text",
+      x = c(-0.6, 0.5, 1.6, 2.7, 3.8, 4.75, 5.9),
+      y = 3.75,
+      label = paste("Hammond Pond Stage =",
+        seq(-1, 5), "ft NAVD88"),
+      angle = 270,
+      size = 3
+    )
+
+# 0.7 fps, 6 culverts
+culvert.curves %>%
+  filter(num.culverts == 6L, near(screen.velocity, 0.7),
+    ROR < 4) %>%
+  ggplot() +
+    plot.template +
+    annotate("text",
+      x = c(0.5, 2.2, 4, 6.45, 8.2),
+      y = c(rep(4.3, 4), 4.4),
+      label = paste("Hammond Pond Stage =",
+        seq(-1, 3), "ft NAVD88"),
+      angle = 270,
+      size = 3
+    ) 
+
+
+
+# 0.2 fps, 4 culverts
+culvert.curves %>%
+  filter(num.culverts == 4L, near(screen.velocity, 0.2)) %>%
+  ggplot() +
+    plot.template +
+    annotate("text",
+      x = c(-0.8, 0.3, 1.4, 2.5, 3.6, 4.75, 5.9),
+      y = 3.75,
+      label = paste("Hammond Pond Stage =",
+        seq(-1, 5), "ft NAVD88"),
+      angle = 270,
+      size = 3
+    )
+
+# 0.7 fps, 4 culverts
+culvert.curves %>%
+  filter(num.culverts == 4L, near(screen.velocity, 0.7)) %>%
+  ggplot() +
+    plot.template +
+    annotate("text",
+      x = c(-0.25, 1, 2.25, 3.5, 5.0, 6.5, 8),
+      y = 4.15,
+      label = paste("Hammond Pond Stage =",
+        seq(-1, 5), "ft NAVD88"),
+      angle = 270,
+      size = 3
+    ) 
+
+```

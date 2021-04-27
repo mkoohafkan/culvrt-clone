@@ -1,0 +1,148 @@
+---
+title: "Loss Components"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{loss-components}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+This report graphs relationships between
+velocity, head loss, and parameterization
+of the various loss component functions provided
+by `culvrt`.
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(tidyverse)
+library(lubridate)
+```
+
+# Entrance loss
+
+```{r}
+le = expand_grid(
+  velocity = seq(0, 10, by = 0.5),
+  ke = seq(0.7, 1.1, by = 0.1)
+) %>%
+  mutate(head.loss = loss_entrance(velocity, ke))
+
+ggplot(le) + 
+  aes(x = velocity, y = head.loss, color = factor(ke)) +
+  geom_line() +
+  scale_color_viridis_d(expression(k[e])) +
+  xlab("Culvert velocity (fps)") +
+  ylab("Entrance head loss (ft)")
+```
+
+# outlet loss
+```{r}
+lo = expand_grid(
+  velocity = seq(0, 10, by = 0.5),
+  alpha = seq(0.8, 1.2, by = 0.1)
+) %>%
+  mutate(head.loss = loss_outlet(velocity, alpha = alpha))
+
+ggplot(lo) + 
+  aes(x = velocity, y = head.loss, color = factor(alpha)) +
+  geom_line() +
+  scale_color_viridis_d(expression(alpha)) +
+  xlab("Culvert velocity (fps)") +
+  ylab("Outlet head loss (ft)")
+```
+
+# pipe friction loss
+
+```{r}
+lf = expand_grid(
+  velocity = seq(0, 10, by = 0.5),
+  n = seq(0.01, 0.03, by = 0.005)
+) %>%
+  mutate(head.loss = loss_pipe(velocity, n = n))
+
+ggplot(lf) + 
+  aes(x = velocity, y = head.loss, color = factor(n)) +
+  geom_line() +
+  scale_color_viridis_d("n") +
+  xlab("Culvert velocity (fps)") +
+  ylab("Friction head loss (ft)")
+
+```
+
+# slide gate loss
+
+```{r}
+base = expand_grid(
+  height = seq(1, 5, by = 1),
+  velocity = seq(0, 10, by = 0.5)
+)
+
+ls = bind_rows(
+  Brater = mutate(base, 
+    head.loss = loss_slide(velocity, height, ks.table = brater_ks())),
+  USDA = mutate(base, 
+    head.loss = loss_slide(velocity, height, ks.table = usda_ks())),
+  .id = "method"
+)
+
+ggplot(ls) + 
+  aes(x = velocity, y = head.loss, color = factor(height)) +
+  geom_line() +
+  facet_wrap(~ paste("Method:", method), ncol = 1) +
+  scale_color_viridis_d("Gate height (ft)") +
+  xlab("Culvert velocity (fps)") +
+  ylab("Slide gate head loss (ft)")
+
+```
+
+# obstruction loss
+
+```{r}
+lob = expand_grid(
+  height = seq(1, 5, by = 1),
+  velocity = seq(0, 10, by = 0.5)
+) %>%
+  mutate(head.loss = loss_obstruction(velocity, height))
+
+ggplot(lob) + 
+  aes(x = velocity, y = head.loss, color = factor(height)) +
+  geom_line() +
+  scale_color_viridis_d("Gate height (ft)") +
+  xlab("Culvert velocity (fps)") +
+  ylab("Obstruction head loss (ft)")
+```
+
+```{r}
+# compare to slide gate loss
+bind_rows(ls, mutate(lob, method = "Obstruction")) %>%
+  mutate(method = factor(method,
+    c("USDA", "Brater", "Obstruction"))) %>%
+  ggplot() + 
+    aes(x = velocity, y = head.loss, color = factor(height)) +
+    geom_line() +
+    facet_wrap(~ method) +
+    scale_color_viridis_d("Gate height (ft)") +
+    xlab("Culvert velocity (fps)") +
+    ylab("Slide gate head loss (ft)")
+```
+
+# flap gate loss
+
+```{r}
+lfl = expand_grid(kf = seq(7, 9, by = 0.5),
+  velocity = seq(0, 20, by = 0.01)) %>%
+  mutate(head.loss = loss_flap(velocity, kf))
+
+ggplot(lfl) + 
+  aes(x = velocity, y = head.loss, color = factor(kf)) +
+  geom_line() +
+  scale_color_viridis_d(expression(k[f])) +
+  xlab("Culvert velocity (fps)") +
+  ylab("Flap gate head loss (ft)")
+```

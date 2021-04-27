@@ -1,0 +1,47 @@
+---
+title: "Screen Flow"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{screen-flow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+This report compares the current RRDS flow calculations to flows
+calculated from the culvert head loss equations provided by the
+`culvrt` package.
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(tidyverse)
+```
+
+```{r}
+datum = -7.2
+width = 120
+
+screen.data = expand_grid(MSL = seq(0, 9, by = 0.1),
+  velocity = c(0.2, 0.7)) %>%
+  mutate(flow = velocity * (MSL - datum) * width)
+
+ggplot(screen.data) + 
+  aes(x = MSL, y = flow, color = factor(velocity)) +
+  geom_line(size = 1) +
+  scale_color_viridis_d("Fish screen velocity",
+    labels = function(x) paste(x, "fps")) +
+  theme_bw() +
+  scale_x_continuous("\nMontezuma Slough stage (ft NAVD88)") +
+  scale_y_continuous("Maximum allowable RRDS inflow (cfs)\n",
+    labels = scales::comma) +
+  theme(
+    legend.position = c(0.2, 0.875),
+    legend.background = element_rect(color = "black")
+  )
+
+```

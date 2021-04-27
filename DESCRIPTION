@@ -1,0 +1,26 @@
+Package: culvrt
+Title: Culvert Head Loss and Hydraulic Geometry
+Version: 0.1.0.9000
+Authors@R: 
+    person(given = "Michael",
+           family = "Koohafkan",
+           role = c("aut", "cre"),
+           email = "michael.koohafkan@water.ca.gov")
+Description: Collection of head loss functions and hydraulic geometry
+    relationships. Primarily used for calculating flow through
+    Roaring River Distribution System intakes.
+License: GPL (>= 3)
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.1
+Imports: stats
+Suggests: 
+    knitr,
+    rmarkdown,
+    tidyverse,
+    lubridate,
+    testthat
+VignetteBuilder: knitr
+Depends: 
+    R (>= 2.10)

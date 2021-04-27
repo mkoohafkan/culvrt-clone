@@ -1,0 +1,174 @@
+---
+title: "Data Comparison"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{quickstart}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+This report compares the current RRDS flow calculations to flows
+calculated from the culvert head loss equations provided by the
+`culvrt` package.
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(tidyverse)
+library(lubridate)
+]```
+
+First, load system data.
+
+```{r}
+dfile = system.file("sample-data/example.csv", package = "culvrt")
+
+raw.data = read_csv(dfile, na = c("", "(null)"), guess_max = 1e4)
+
+cleaned.data = raw.data %>%
+  mutate(head.loss = screen - pond)
+```
+
+Now calculate the velocity in each culvert based on the gate height:
+
+```{r}
+velocity.data = cleaned.data %>%
+  select(-velocity.plc) %>%
+  pivot_longer(matches("GATE"), 
+    names_to = "gate",  values_to = "height") %>%
+  na.omit() %>%
+  filter(head.loss > 0, height > 0) %>%
+  mutate(
+    velocity.eq1996 = map2_dbl(head.loss, height,
+      ~ uniroot(root_velocity_hist, c(0, 50), head.loss = .x, h = .y,
+          n = 0.026, ks.table = brater_ks())$root),
+    velocity.eq2011 = map2_dbl(head.loss, height,
+      ~ uniroot(root_velocity, c(0, 50), head.loss = .x, h = .y,
+          n = 0.022, ks.table = usda_ks())$root),
+    velocity.eq2021 = map2_dbl(head.loss, height,
+      ~ uniroot(root_velocity_alt, c(0, 50), head.loss = .x, h = .y,
+          n = 0.022, ks.table = usda_ks())$root)
+  )
+```
+
+Convert velocity to flow and then sum across gates:
+
+```{r}
+flow.data = velocity.data %>%
+  mutate(across(starts_with("velocity"), velocity_to_flow,
+    .names = "{gsub('velocity', 'flow', .col)}")) %>%
+  group_by(time) %>%
+  summarize(across(starts_with("flow"), sum), .groups = "drop")
+```
+
+Join the flow data back to the system data and calculate the fish
+screen velocity:
+
+```{r}
+complete.data = cleaned.data %>%
+  left_join(flow.data, by = "time") %>%
+  select(-starts_with("GATE")) %>%
+  mutate(across(starts_with("flow"), ~ .x / (120 * (tide + 7.2)),
+    .names = "{gsub('flow', 'velocity', .col)}")) %>%
+  select(-starts_with("flow")) %>%
+  pivot_longer(starts_with("velocity"), names_to = "method",
+    values_to = "velocity") %>%
+  mutate(
+    velocity = if_else(is.na(velocity), 0, velocity),
+    method = if_else(str_detect(method, "plc$"), "PLC",
+      paste(str_extract(method, "[0-9]{4}"), "equation"))
+  )
+
+complete.flow.data = cleaned.data %>%
+  left_join(flow.data, by = "time") %>%
+  select(-starts_with("GATE")) %>%
+  pivot_longer(starts_with("flow"), names_to = "method",
+    values_to = "flow") %>%
+  mutate(
+    flow = if_else(is.na(flow), 0, flow),
+    method = if_else(str_detect(method, "plc$"), "PLC",
+      paste(str_extract(method, "[0-9]{4}"), "equation"))
+  )
+```
+
+```{r}
+#save(complete.data, file = "data-compare.RData")
+```
+
+
+```{r}
+complete.data %>%
+  filter(between(time, as_datetime("2019-08-30 00:00:00"),
+    as_datetime("2019-10-29 15:00:00"))) %>%
+  ggplot() +
+    aes(x = time, y = velocity, color = method) +
+    geom_line(size = 0.5, alpha = 0.5) +
+    scale_color_brewer(NULL, palette = "Set1") +
+    scale_x_datetime(NULL, date_labels = "%H:%M\n%Y-%m-%d",
+      expand = expansion(0.01)) +
+    scale_y_continuous("Fish screen velocity (fps)") +
+    theme_bw() +
+    theme(
+      legend.position = c(0.15, 0.85),
+      legend.background = element_rect(color = "black")
+    )
+
+plotly::ggplotly(dynamicTicks = TRUE)
+
+# subsets
+
+sub1 = complete.data %>%
+  filter(between(time, as_datetime("2019-09-21 06:00:00"),
+    as_datetime("2019-09-22"))) %>%
+  mutate(group = 1L)
+
+sub2 = complete.data %>%
+  filter(between(time, as_datetime("2019-10-05 06:00:00"),
+    as_datetime("2019-10-06 02:00:00"))) %>%
+  mutate(group = 2L)
+
+sub3 = complete.data %>%
+  filter(between(time, as_datetime("2019-10-28 13:00:00"),
+    as_datetime("2019-10-29 15:00:00"))) %>%
+  mutate(group = 3L)
+
+
+bind_rows(sub1, sub2, sub3) %>%
+  ggplot() +
+    aes(x = time, y = velocity, color = method) +
+    geom_line(size = 1) +
+    scale_color_brewer(NULL, palette = "Set1") +
+    scale_x_datetime(NULL, date_labels = "%H:%M\n%Y-%m-%d") +
+    scale_y_continuous("Fish screen velocity (fps)") +
+    theme_bw() +
+    facet_wrap(~ group, ncol = 1, scales = "free_x") +
+    theme(
+      legend.position = c(0.15, 0.9),
+      legend.background = element_rect(color = "black"),
+      strip.background = element_blank(),
+      strip.text.x = element_blank()
+    )
+
+# new sub
+
+
+complete.data %>%
+  filter(between(time, as_datetime("2019-10-10 09:00:00"),
+    as_datetime("2019-10-11 21:00:00"))) %>%
+  ggplot() +
+    aes(x = time, y = velocity, color = method) +
+    geom_line(size = 1, alpha = 0.8) +
+    scale_color_brewer(NULL, palette = "Set1") +
+    scale_x_datetime(NULL, date_labels = "%H:%M\n%Y-%m-%d") +
+    scale_y_continuous("Fish screen velocity (fps)", limits = c(0, 1.05)) +
+    theme_bw() +
+    theme(
+      legend.position = c(0.15, 0.85),
+      legend.background = element_rect(color = "black")
+    )
+```

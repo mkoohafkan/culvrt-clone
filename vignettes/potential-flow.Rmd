@@ -1,0 +1,94 @@
+library(tidyverse)
+library(lubridate)
+
+load("data-compare.RData")
+load("curve-creation.RData")
+
+
+# calculate what you actually got based on recorded gate heights
+
+```{r}
+computed.flow = complete.flow.data %>%
+   filter(method == "2011 equation") %>%
+   mutate(approach.velocity = if_else(between(time, as_datetime("2019-09-14"), 
+     as_datetime("2019-10-21")), 0.7, 0.2))
+
+nonzero.flow = computed.flow %>%
+  filter(!is.na(head.loss), head.loss > 0)
+
+culvert.table = culvert.curves %>%
+  filter(num.culverts == 8L)
+```
+
+
+```{r}
+lookup = function(screen, pond, max.velocity, tbl) {
+  
+  this.flow = tbl %>%
+    filter(near(screen.velocity, max.velocity)) %>%
+    mutate(
+      screen.diff = MSL -screen,
+      pond.diff = ROR - pond,
+      stage.dist = sqrt(screen.diff^2 + pond.diff^2)
+    ) %>%
+    filter(near(stage.dist, min(stage.dist))) %>%
+    pull(max.flow)
+  if (length(this.flow) != 1L) {
+    stop("oppsie woopsie ", length(this.flow))
+  }
+  this.flow
+}
+```
+```{r}
+new.flow = nonzero.flow %>%
+  mutate(possible.flow = pmap_dbl(list(screen = screen, pond = pond,
+    max.velocity = approach.velocity), lookup, tbl = culvert.table))
+
+flow.compare = computed.flow %>%
+  left_join(select(new.flow, time, possible.flow), by = "time") %>%
+  mutate(possible.flow = if_else(head.loss > 0, possible.flow, 0)) %>%
+  pivot_longer(c(flow, possible.flow), names_to = "what",
+    values_to = "value") %>%
+  rename(flow = value) %>%
+  mutate(what = factor(what, c("flow", "possible.flow"),
+    c("actual", "optimal"))) %>%
+  select(-method, -velocity.plc)
+```
+
+```{r}
+#save(flow.compare, file = "potential-flow.RData")
+```
+
+```{r}
+flow.compare %>%
+  filter(between(time, as_datetime("2019-08-30 00:00:00"),
+    as_datetime("2019-10-29 15:00:00"))) %>%
+  ggplot() +
+    aes(x = time, y = flow, color = what) +
+    geom_line(size = 0.5, alpha = 0.5) +
+    scale_color_brewer(NULL, palette = "Set1") +
+    scale_x_datetime(NULL, date_labels = "%H:%M\n%Y-%m-%d",
+      expand = expansion(0.01)) +
+    scale_y_continuous("Flow (cfs)") +
+    theme_bw() +
+    theme(
+      legend.position = c(0.15, 0.85),
+      legend.background = element_rect(color = "black")
+    )
+
+flow.compare %>%
+  filter(between(time, as_datetime("2019-10-10 09:00:00"),
+    as_datetime("2019-10-11 21:00:00"))) %>%
+  ggplot() +
+    aes(x = time, y = flow, color = what) +
+    geom_line(size = 1, alpha = 0.8) +
+    scale_color_brewer(NULL, palette = "Set1") +
+    scale_x_datetime(NULL, date_labels = "%H:%M\n%Y-%m-%d",
+      expand = expansion(0.01)) +
+    scale_y_continuous("Flow (cfs)") +
+    theme_bw() +
+    theme(
+      legend.position = c(0.85, 0.9),
+      legend.background = element_rect(color = "black")
+    )
+```
