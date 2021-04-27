@@ -1,9 +1,5 @@
 # culvrt
 
-<!-- badges: start -->
-[![R build status](https://github.com/SuisunMarshBranch/culvrt/workflows/R-CMD-check/badge.svg)](https://github.com/SuisunMarshBranch/culvrt/actions)
-<!-- badges: end -->
-
 R Package for calculating culvert flow and head loss.
 
 
